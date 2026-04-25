@@ -8,14 +8,13 @@ from datetime import datetime
 app = Flask(__name__)
 CORS(app)
 
-INV = "http://127.0.0.1:5001/update_inventory"
-PAY = "http://127.0.0.1:5002/process_payment"
+INV = os.environ.get("INV_URL", "http://127.0.0.1:5001/update_inventory")
+PAY = os.environ.get("PAY_URL", "http://127.0.0.1:5002/process_payment")
 
 ORDERS_FILE = "orders.xml"
 RECEIPTS_FILE = "receipts.xml"
 
 
-# ---------- helpers ----------
 def load_xml(file):
     if os.path.exists(file):
         try:
@@ -29,47 +28,53 @@ def save_xml(file, root):
     ET.ElementTree(root).write(file, encoding="unicode", xml_declaration=True)
 
 
-# ---------- routes ----------
-@app.route('/')
+@app.route("/")
 def home():
     return render_template("index.html")
 
 
-@app.route('/place_order', methods=['POST'])
+@app.route("/place_order", methods=["POST"])
 def place_order():
     root = ET.fromstring(request.data)
 
-    code = root.find('ProductCode').text
-    qty = int(root.find('Quantity').text)
-    cname = root.find('CustomerName').text if root.find('CustomerName') is not None else "Guest"
+    code = root.find("ProductCode").text
+    qty = int(root.find("Quantity").text)
+    cname = root.find("CustomerName").text if root.find("CustomerName") is not None else "Guest"
 
-    # STEP 1 INVENTORY
-    inv = requests.post(INV, data=request.data, headers={'Content-Type': 'application/xml'})
+    inv = requests.post(
+        INV,
+        data=request.data,
+        headers={"Content-Type": "application/xml"}
+    )
+
     inv_xml = ET.fromstring(inv.content)
 
-    if inv_xml.find('Status').text != "Success":
+    if inv_xml.find("Status").text != "Success":
         return Response(inv.content, mimetype="application/xml")
 
-    pname = inv_xml.find('Name').text
-    brand = inv_xml.find('Brand').text
-    price = float(inv_xml.find('Price').text)
+    pname = inv_xml.find("Name").text
+    brand = inv_xml.find("Brand").text
+    price = float(inv_xml.find("Price").text)
     total = price * qty
 
-    # STEP 2 PAYMENT
-    pay_xml = ET.Element("Payment")
-    ET.SubElement(pay_xml, "Amount").text = str(total)
-    ET.SubElement(pay_xml, "ProductName").text = pname
-    ET.SubElement(pay_xml, "Quantity").text = str(qty)
+    pay_req = ET.Element("Payment")
+    ET.SubElement(pay_req, "Amount").text = str(total)
+    ET.SubElement(pay_req, "ProductName").text = pname
+    ET.SubElement(pay_req, "Quantity").text = str(qty)
 
-    pay = requests.post(PAY, data=ET.tostring(pay_xml), headers={'Content-Type': 'application/xml'})
+    pay = requests.post(
+        PAY,
+        data=ET.tostring(pay_req),
+        headers={"Content-Type": "application/xml"}
+    )
+
     pay_xml = ET.fromstring(pay.content)
 
-    if pay_xml.find('Status').text != "Success":
+    if pay_xml.find("Status").text != "Success":
         return Response(pay.content, mimetype="application/xml")
 
-    txn = pay_xml.find('TransactionID').text
+    txn = pay_xml.find("TransactionID").text
 
-    # STEP 3 SAVE ORDER
     orders = load_xml(ORDERS_FILE)
     o = ET.SubElement(orders, "Order")
 
@@ -84,9 +89,7 @@ def place_order():
 
     save_xml(ORDERS_FILE, orders)
 
-    # STEP 4 CREATE RECEIPT (NEW FEATURE)
     receipts = load_xml(RECEIPTS_FILE)
-
     r = ET.SubElement(receipts, "Receipt")
 
     ET.SubElement(r, "TransactionID").text = txn
@@ -100,7 +103,6 @@ def place_order():
 
     save_xml(RECEIPTS_FILE, receipts)
 
-    # STEP 5 RESPONSE TO FRONTEND
     res = ET.Element("OrderResponse")
     ET.SubElement(res, "Status").text = "Success"
     ET.SubElement(res, "TransactionID").text = txn
@@ -113,15 +115,22 @@ def place_order():
     return Response(ET.tostring(res, encoding="unicode"), mimetype="application/xml")
 
 
-@app.route('/order_history')
+@app.route("/order_history")
 def history():
-    return Response(ET.tostring(load_xml(ORDERS_FILE), encoding="unicode"), mimetype="application/xml")
+    return Response(
+        ET.tostring(load_xml(ORDERS_FILE), encoding="unicode"),
+        mimetype="application/xml"
+    )
 
 
-@app.route('/receipts')
+@app.route("/receipts")
 def receipts():
-    return Response(ET.tostring(load_xml(RECEIPTS_FILE), encoding="unicode"), mimetype="application/xml")
+    return Response(
+        ET.tostring(load_xml(RECEIPTS_FILE), encoding="unicode"),
+        mimetype="application/xml"
+    )
 
 
 if __name__ == "__main__":
-    app.run(port=5000, debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
