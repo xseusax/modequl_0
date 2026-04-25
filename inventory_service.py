@@ -1,19 +1,43 @@
-from flask import Flask, Response, request
+from flask import Flask, Response, jsonify
 from flask_cors import CORS
 import xml.etree.ElementTree as ET
+import os
 
 app = Flask(__name__)
 CORS(app)
 
 FILE = "inventory.xml"
 
+
 def load():
     return ET.parse(FILE).getroot()
+
 
 @app.route("/inventory", methods=["GET"])
 def inventory():
     root = load()
-    return Response(ET.tostring(root, encoding="unicode"), mimetype="application/xml")
+
+    products = []
+
+    for item in root.findall("Item"):
+        products.append({
+            "code": item.findtext("Code"),
+            "name": item.findtext("Name"),
+            "brand": item.findtext("Brand"),
+            "price": item.findtext("Price"),
+            "stock": item.findtext("Stock")
+        })
+
+    return jsonify(products)
+
+
+@app.route("/inventory_xml", methods=["GET"])
+def inventory_xml():
+    root = load()
+    return Response(
+        ET.tostring(root, encoding="unicode"),
+        mimetype="application/xml"
+    )
 
 
 @app.route("/update_inventory", methods=["POST"])
@@ -37,7 +61,6 @@ def update():
                 """, mimetype="application/xml")
 
             item.find("Stock").text = str(stock - qty)
-
             ET.ElementTree(root).write(FILE, encoding="unicode")
 
             return Response(f"""
@@ -59,4 +82,6 @@ def update():
 
 
 if __name__ == "__main__":
-    app.run(port=5001, debug=True)
+    from flask import request
+    port = int(os.environ.get("PORT", 5001))
+    app.run(host="0.0.0.0", port=port)
