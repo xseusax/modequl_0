@@ -518,373 +518,167 @@
 <div id="toast"></div>
 
 <script>
-  const INV  = 'https://your-inventory-service.onrender.com/inventory';
-const ORD  = 'https://your-order-service.onrender.com/place_order';
-const HIST = 'https://your-order-service.onrender.com/order_history';
-const REC  = 'https://your-order-service.onrender.com/save_receipt';
+const INV  = 'https://sweet-inventory-service.onrender.com/inventory';
+const ORD  = 'https://sweet-order-service.onrender.com/place_order';
+const HIST = 'https://sweet-order-service.onrender.com/order_history';
+const REC  = '';
 
-  const EMO = {
-    VVC:'🧁',CCK:'🍫',RVT:'🍰',STB:'🍓',SMR:'🔥',CPL:'🥨',MAT:'🌸',LMN:'🍋',
-    CTM:'🫐',BMP:'🤎',MTG:'🍵',OCT:'🫖',CLT:'🥥',PMT:'🍑',WBB:'❄️',
-    CBG:'🍔',BBG:'🥓',MBG:'🍄',CBR:'🍗',VBG:'🥦',DBG:'🔥',
-    LMD:'🍋',MNG:'🥭',STK:'🍓',ICF:'☕',OJC:'🍊',CHC:'🍫',GRA:'🍇',WML:'🍉',SBT:'🍓',
-  };
+const EMO = {
+  VVC:'🧁',CCK:'🍫',RVT:'🍰',STB:'🍓',
+  MTG:'🍵',OCT:'🫖',CLT:'🥥',
+  CBG:'🍔',BBG:'🥓',
+  LMD:'🍋',MNG:'🥭',ICF:'☕'
+};
 
-  const SLUG = {Cupcakes:'c','Milk Tea':'m',Burgers:'b',Drinks:'d'};
-  const CATEMO = {Cupcakes:'🧁','Milk Tea':'🧋',Burgers:'🍔',Drinks:'🥤'};
-  const CATORD = ['Cupcakes','Milk Tea','Burgers','Drinks'];
-  const DOTCOL = {Cupcakes:'#e8637a','Milk Tea':'#9b7ee8',Burgers:'#e8943a',Drinks:'#3ab8c8'};
+const SLUG = {Cupcakes:'c','Milk Tea':'m',Burgers:'b',Drinks:'d'};
+const CATEMO = {Cupcakes:'🧁','Milk Tea':'🧋',Burgers:'🍔',Drinks:'🥤'};
+const CATORD = ['Cupcakes','Milk Tea','Burgers','Drinks'];
 
-  let items = [];
-  let sel = null;
-  let filt = 'all';
+let items = [];
+let sel = null;
+let filt = 'all';
 
-  async function loadInventory() {
-    try {
-      const r = await fetch(INV);
-      const txt = await r.text();
-      const x = new DOMParser().parseFromString(txt, 'application/xml');
+/* ---------------- INVENTORY (FIXED TO JSON) ---------------- */
+async function loadInventory() {
+  try {
+    const r = await fetch(INV);
+    const data = await r.json();
 
-      items = [...x.querySelectorAll('Item')].map(e => ({
-        code: e.querySelector('Code')?.textContent || '',
-        name: e.querySelector('Name')?.textContent || '',
-        brand: e.querySelector('Brand')?.textContent || '',
-        category: e.querySelector('Category')?.textContent || '',
-        stock: parseInt(e.querySelector('Stock')?.textContent || '0'),
-        price: parseFloat(e.querySelector('Price')?.textContent || '0'),
-      }));
+    items = data.map(e => ({
+      code: e.code,
+      name: e.name,
+      brand: e.brand,
+      category: getCategory(e.code),
+      stock: parseInt(e.stock),
+      price: parseFloat(e.price),
+    }));
 
-      renderMenu();
-    } catch (err) {
-      document.getElementById('menu-body').innerHTML =
-        `<div class="lstate" style="color:#e88080">
-          ⚠️ Cannot reach inventory service.<br>
-          <small>Make sure port 5001 is running.</small>
-        </div>`;
-    }
-  }
-
-  function renderMenu() {
-    const filtered = filt === 'all' ? items : items.filter(i => i.category === filt);
-
-    document.getElementById('menu-count').textContent =
-      `${filtered.length} item${filtered.length !== 1 ? 's' : ''}`;
-
-    if (!filtered.length) {
-      document.getElementById('menu-body').innerHTML =
-        `<div class="lstate">No items match this filter.</div>`;
-      return;
-    }
-
-    const grp = {};
-    filtered.forEach(i => {
-      if (!grp[i.category]) grp[i.category] = [];
-      grp[i.category].push(i);
-    });
-
-    let html = '';
-
-    CATORD.forEach(cat => {
-      if (!grp[cat]) return;
-
-      const s = SLUG[cat];
-
-      html += `
-        <div class="grp-head">
-          <span class="grp-tag gt-${s}">${CATEMO[cat]} ${cat}</span>
-          <span class="grp-line"></span>
-          <span class="grp-cnt">${grp[cat].length} items</span>
-        </div>
-        <div class="pgrid">
-      `;
-
-      grp[cat].forEach(item => {
-        const oos = item.stock === 0;
-        const low = !oos && item.stock <= 15;
-
-        const sc = oos ? 'sp-out' : low ? 'sp-low' : 'sp-ok';
-        const sl = oos ? 'Out of Stock' : low ? `Only ${item.stock} left` : `${item.stock} in stock`;
-
-        const em = EMO[item.code] || '🍽️';
-
-        html += `
-          <div class="pcard c${s}${oos ? ' oos' : ''}"
-            id="pc-${item.code}"
-            onclick="${oos ? '' : `pick('${item.code}')`}">
-
-            <div class="pchk">✓</div>
-            <span class="pcard-emo">${em}</span>
-
-            <div class="pcard-name">${item.name}</div>
-            <div class="pcard-brand">${item.brand}</div>
-
-            <div class="pcard-foot">
-              <div class="pcard-price">₱${item.price.toFixed(2)}</div>
-              <span class="sp ${sc}">${sl}</span>
-            </div>
-          </div>
-        `;
-      });
-
-      html += `</div>`;
-    });
-
-    document.getElementById('menu-body').innerHTML = html;
-
-    if (sel) {
-      document.getElementById(`pc-${sel.code}`)?.classList.add('selected');
-    }
-  }
-
-  function setTab(el, f) {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    el.classList.add('active');
-    filt = f;
     renderMenu();
+  } catch (err) {
+    document.getElementById('menu-body').innerHTML =
+      `<div class="lstate" style="color:#e88080">
+        ⚠️ Cannot reach inventory service.<br>
+      </div>`;
+  }
+}
+
+/* ---------------- CATEGORY MAPPER ---------------- */
+function getCategory(code) {
+  if (['VVC','CCK','RVT','STB'].includes(code)) return 'Cupcakes';
+  if (['MTG','OCT','CLT'].includes(code)) return 'Milk Tea';
+  if (['CBG','BBG'].includes(code)) return 'Burgers';
+  return 'Drinks';
+}
+
+/* ---------------- RENDER MENU ---------------- */
+function renderMenu() {
+  const filtered = filt === 'all' ? items : items.filter(i => i.category === filt);
+
+  document.getElementById('menu-count').textContent =
+    `${filtered.length} item${filtered.length !== 1 ? 's' : ''}`;
+
+  if (!filtered.length) {
+    document.getElementById('menu-body').innerHTML =
+      `<div class="lstate">No items found.</div>`;
+    return;
   }
 
-  function pick(code) {
-    document.querySelectorAll('.pcard.selected')
-      .forEach(c => c.classList.remove('selected'));
+  let html = '';
 
-    document.getElementById(`pc-${code}`)?.classList.add('selected');
+  CATORD.forEach(cat => {
+    const group = filtered.filter(i => i.category === cat);
+    if (!group.length) return;
 
-    sel = items.find(i => i.code === code);
-    if (!sel) return;
+    const s = SLUG[cat];
 
-    const s = SLUG[sel.category] || 'c';
-    const box = document.getElementById('sel-box');
-
-    box.className = `sel-box filled ac-${s}`;
-    box.innerHTML = `
-      <span class="sel-emo">${EMO[sel.code] || '🍽️'}</span>
-      <div>
-        <div class="sel-name">${sel.name}</div>
-        <div class="sel-meta">${sel.brand} · ₱${sel.price.toFixed(2)} each · ${sel.stock} in stock</div>
+    html += `
+      <div class="grp-head">
+        <span class="grp-tag gt-${s}">${CATEMO[cat]} ${cat}</span>
+        <span class="grp-line"></span>
+        <span class="grp-cnt">${group.length} items</span>
       </div>
+      <div class="pgrid">
     `;
 
-    document.getElementById('qty').value = 1;
-    document.getElementById('sub-btn').disabled = false;
-    calcTotal();
-  }
+    group.forEach(item => {
+      html += `
+        <div class="pcard c${s}" onclick="pick('${item.code}')">
+          <span class="pcard-emo">${EMO[item.code] || '🍽️'}</span>
+          <div class="pcard-name">${item.name}</div>
+          <div class="pcard-brand">${item.brand}</div>
+          <div class="pcard-price">₱${item.price}</div>
+        </div>
+      `;
+    });
 
-  function adjQty(d) {
-    const inp = document.getElementById('qty');
-    const max = sel ? sel.stock : 99;
-
-    inp.value = Math.max(1, Math.min(max, parseInt(inp.value || 1) + d));
-    calcTotal();
-  }
-
-  function calcTotal() {
-    if (!sel) return;
-    const q = parseInt(document.getElementById('qty').value) || 1;
-    document.getElementById('total').textContent = `₱${(sel.price * q).toFixed(2)}`;
-  }
-
-  document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('qty').addEventListener('input', calcTotal);
+    html += `</div>`;
   });
 
-  async function placeOrder() {
-    if (!sel) return;
+  document.getElementById('menu-body').innerHTML = html;
+}
 
-    const name = document.getElementById('cname').value.trim() || 'Guest';
-    const qty = parseInt(document.getElementById('qty').value) || 1;
+/* ---------------- SELECT PRODUCT ---------------- */
+function pick(code) {
+  sel = items.find(i => i.code === code);
 
-    if (qty > sel.stock) {
-      toast(`⚠️ Only ${sel.stock} in stock!`);
-      return;
-    }
+  document.getElementById('sel-box').innerHTML = `
+    <div>
+      <strong>${sel.name}</strong><br>
+      ₱${sel.price}
+    </div>
+  `;
 
-    const btn = document.getElementById('sub-btn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spin"></span> Processing…';
+  document.getElementById('sub-btn').disabled = false;
+  calcTotal();
+}
 
-    const xml = `
-      <Order>
-        <ProductCode>${sel.code}</ProductCode>
-        <Quantity>${qty}</Quantity>
-        <CustomerName>${escapeXML(name)}</CustomerName>
-      </Order>
-    `;
+/* ---------------- TOTAL ---------------- */
+function calcTotal() {
+  if (!sel) return;
+  const q = parseInt(document.getElementById('qty').value) || 1;
+  document.getElementById('total').textContent =
+    `₱${(sel.price * q).toFixed(2)}`;
+}
 
-    try {
-      const res = await fetch(ORD, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/xml'},
-        body: xml
-      });
+/* ---------------- ORDER ---------------- */
+async function placeOrder() {
+  if (!sel) return;
 
-      const txt = await res.text();
-      const doc = new DOMParser().parseFromString(txt, 'application/xml');
+  const name = document.getElementById('cname').value || 'Guest';
+  const qty = document.getElementById('qty').value;
 
-      const status = doc.querySelector('Status')?.textContent;
+  const xml = `
+    <Order>
+      <ProductCode>${sel.code}</ProductCode>
+      <Quantity>${qty}</Quantity>
+      <CustomerName>${name}</CustomerName>
+    </Order>
+  `;
 
-      if (status === 'Success') {
-        const txn = doc.querySelector('TransactionID')?.textContent || '';
-        const total = doc.querySelector('TotalAmount')?.textContent || '0';
-        const now = new Date().toLocaleString('en-PH');
+  const res = await fetch(ORD, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/xml'},
+    body: xml
+  });
 
-        // build receipt XML
-        const receiptXML = `
-          <Receipt>
-            <TransactionID>${txn}</TransactionID>
-            <CustomerName>${escapeXML(name)}</CustomerName>
-            <ProductCode>${sel.code}</ProductCode>
-            <ProductName>${sel.name}</ProductName>
-            <Brand>${sel.brand}</Brand>
-            <Quantity>${qty}</Quantity>
-            <UnitPrice>${sel.price}</UnitPrice>
-            <TotalAmount>${total}</TotalAmount>
-            <DateTime>${now}</DateTime>
-          </Receipt>
-        `;
-
-        // SAVE RECEIPT (NEW FEATURE)
-        fetch(REC, {
-          method: 'POST',
-          headers: {'Content-Type': 'application/xml'},
-          body: receiptXML
-        }).catch(() => {});
-
-        openReceipt({
-          name,
-          item: sel,
-          qty,
-          total,
-          txn,
-          dt: now
-        });
-
-        toast('🧡 Order placed successfully!');
-        loadInventory();
-        loadHistory();
-        resetForm();
-
-      } else {
-        const msg = doc.querySelector('Message')?.textContent || 'Error';
-        toast('❌ ' + msg);
-      }
-
-    } catch (err) {
-      toast('❌ Connection error');
-    }
-
-    btn.disabled = false;
-    btn.innerHTML = 'Place Order';
-  }
-
-  function resetForm() {
-    sel = null;
-    document.querySelectorAll('.pcard.selected')
-      .forEach(c => c.classList.remove('selected'));
-
-    const box = document.getElementById('sel-box');
-    box.className = 'sel-box';
-    box.innerHTML = `<span class="sel-ph">👆 Tap a product on the menu</span>`;
-
-    document.getElementById('qty').value = 1;
-    document.getElementById('total').textContent = '₱0.00';
-    document.getElementById('sub-btn').disabled = true;
-  }
-
-  function escapeXML(s) {
-    return s.replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
-  }
-
-  function toast(msg) {
-    const el = document.getElementById('toast');
-    el.textContent = msg;
-    el.classList.add('show');
-    setTimeout(() => el.classList.remove('show'), 3000);
-  }
-
-  function scrollToHistory() {
-    document.getElementById('history-section')
-      .scrollIntoView({behavior: 'smooth'});
-  }
-
-  function openReceipt({name, item, qty, total, txn, dt}) {
-    document.getElementById('r-dt').textContent = dt;
-    document.getElementById('r-cust').textContent = name;
-    document.getElementById('r-txn').textContent = txn;
-    document.getElementById('r-total').textContent = `₱${parseFloat(total).toFixed(2)}`;
-
-    document.getElementById('r-items').innerHTML = `
-      <div class="ritem">
-        <div>
-          <div class="ritem-name">${EMO[item.code] || '🍽️'} ${item.name}</div>
-          <div class="ritem-det">${item.brand} · ₱${item.price.toFixed(2)} × ${qty}</div>
-        </div>
-        <div class="ritem-amt">₱${(item.price * qty).toFixed(2)}</div>
-      </div>
-    `;
-
-    document.getElementById('overlay').classList.add('open');
-  }
-
-  function closeReceipt() {
-    document.getElementById('overlay').classList.remove('open');
-  }
-
-  function closeOuter(e) {
-    if (e.target.id === 'overlay') closeReceipt();
-  }
-
-  async function loadHistory() {
-    try {
-      const r = await fetch(HIST);
-      const txt = await r.text();
-      const x = new DOMParser().parseFromString(txt, 'application/xml');
-
-      const ords = [...x.querySelectorAll('Order')].reverse();
-      document.getElementById('order-count').textContent = ords.length;
-
-      const list = document.getElementById('hlist');
-
-      if (!ords.length) {
-        list.innerHTML = `<div class="no-h"><div class="no-h-ico">🧾</div><p>No orders yet!</p></div>`;
-        return;
-      }
-
-      list.innerHTML = ords.map(o => {
-        const code = o.querySelector('ProductCode')?.textContent || '';
-        const prod = o.querySelector('ProductName')?.textContent || '';
-        const cust = o.querySelector('CustomerName')?.textContent || 'Guest';
-        const qty = o.querySelector('Quantity')?.textContent || '';
-        const ppu = o.querySelector('PricePerUnit')?.textContent || '';
-        const total = o.querySelector('TotalAmount')?.textContent || '';
-        const ts = o.querySelector('Timestamp')?.textContent || '';
-
-        return `
-          <div class="hrow">
-            <div class="hrow-ico">${EMO[code] || '🍽️'}</div>
-            <div class="hrow-main">
-              <div class="hrow-name">${prod}</div>
-              <div class="hrow-sub">
-                <span>👤 ${cust}</span>
-                <span>×${qty} @ ₱${ppu}</span>
-              </div>
-              <div class="hrow-sub">🕐 ${ts}</div>
-            </div>
-            <div class="hrow-right">
-              <div class="hrow-amt">₱${parseFloat(total).toFixed(2)}</div>
-            </div>
-          </div>
-        `;
-      }).join('');
-
-    } catch (e) {}
-  }
+  const txt = await res.text();
+  alert(txt);
 
   loadInventory();
-  loadHistory();
-  setInterval(loadInventory, 30000);
+}
+
+/* ---------------- HISTORY ---------------- */
+async function loadHistory() {
+  try {
+    const r = await fetch(HIST);
+    const txt = await r.text();
+    document.getElementById('hlist').innerText = txt;
+  } catch {}
+}
+
+/* ---------------- INIT ---------------- */
+loadInventory();
+loadHistory();
 </script>
 </body>
 </html>
