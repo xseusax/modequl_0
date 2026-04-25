@@ -524,10 +524,10 @@ const HIST = 'https://sweet-order-service.onrender.com/order_history';
 const REC  = '';
 
 const EMO = {
-  VVC:'🧁',CCK:'🍫',RVT:'🍰',STB:'🍓',
-  MTG:'🍵',OCT:'🫖',CLT:'🥥',
-  CBG:'🍔',BBG:'🥓',
-  LMD:'🍋',MNG:'🥭',ICF:'☕'
+  VVC:'🧁',CCK:'🍫',RVT:'🍰',STB:'🍓',SMR:'🔥',CPL:'🥨',MAT:'🌸',LMN:'🍋',
+  CTM:'🫐',BMP:'🤎',MTG:'🍵',OCT:'🫖',CLT:'🥥',PMT:'🍑',WBB:'❄️',
+  CBG:'🍔',BBG:'🥓',MBG:'🍄',CBR:'🍗',VBG:'🥦',DBG:'🔥',
+  LMD:'🍋',MNG:'🥭',STK:'🍓',ICF:'☕',OJC:'🍊',CHC:'🍫',GRA:'🍇',WML:'🍉',SBT:'🍓'
 };
 
 const SLUG = {Cupcakes:'c','Milk Tea':'m',Burgers:'b',Drinks:'d'};
@@ -538,39 +538,36 @@ let items = [];
 let sel = null;
 let filt = 'all';
 
-/* ---------------- INVENTORY (FIXED TO JSON) ---------------- */
 async function loadInventory() {
   try {
     const r = await fetch(INV);
     const data = await r.json();
 
     items = data.map(e => ({
-      code: e.code,
-      name: e.name,
-      brand: e.brand,
+      code: e.code || '',
+      name: e.name || '',
+      brand: e.brand || '',
       category: getCategory(e.code),
-      stock: parseInt(e.stock),
-      price: parseFloat(e.price),
+      stock: parseInt(e.stock || '0'),
+      price: parseFloat(e.price || '0')
     }));
 
     renderMenu();
   } catch (err) {
     document.getElementById('menu-body').innerHTML =
       `<div class="lstate" style="color:#e88080">
-        ⚠️ Cannot reach inventory service.<br>
+        ⚠️ Cannot reach inventory service.
       </div>`;
   }
 }
 
-/* ---------------- CATEGORY MAPPER ---------------- */
 function getCategory(code) {
-  if (['VVC','CCK','RVT','STB'].includes(code)) return 'Cupcakes';
-  if (['MTG','OCT','CLT'].includes(code)) return 'Milk Tea';
-  if (['CBG','BBG'].includes(code)) return 'Burgers';
+  if (['VVC','CCK','RVT','STB','SMR','CPL','MAT','LMN'].includes(code)) return 'Cupcakes';
+  if (['CTM','BMP','MTG','OCT','CLT','PMT','WBB'].includes(code)) return 'Milk Tea';
+  if (['CBG','BBG','MBG','CBR','VBG','DBG'].includes(code)) return 'Burgers';
   return 'Drinks';
 }
 
-/* ---------------- RENDER MENU ---------------- */
 function renderMenu() {
   const filtered = filt === 'all' ? items : items.filter(i => i.category === filt);
 
@@ -578,8 +575,7 @@ function renderMenu() {
     `${filtered.length} item${filtered.length !== 1 ? 's' : ''}`;
 
   if (!filtered.length) {
-    document.getElementById('menu-body').innerHTML =
-      `<div class="lstate">No items found.</div>`;
+    document.getElementById('menu-body').innerHTML = `<div class="lstate">No items found.</div>`;
     return;
   }
 
@@ -601,12 +597,26 @@ function renderMenu() {
     `;
 
     group.forEach(item => {
+      const oos = item.stock === 0;
+      const low = !oos && item.stock <= 15;
+      const sc = oos ? 'sp-out' : low ? 'sp-low' : 'sp-ok';
+      const sl = oos ? 'Out of Stock' : low ? `Only ${item.stock} left` : `${item.stock} in stock`;
+
       html += `
-        <div class="pcard c${s}" onclick="pick('${item.code}')">
+        <div class="pcard c${s}${oos ? ' oos' : ''}"
+          id="pc-${item.code}"
+          onclick="${oos ? '' : `pick('${item.code}')`}">
+
+          <div class="pchk">✓</div>
           <span class="pcard-emo">${EMO[item.code] || '🍽️'}</span>
+
           <div class="pcard-name">${item.name}</div>
           <div class="pcard-brand">${item.brand}</div>
-          <div class="pcard-price">₱${item.price}</div>
+
+          <div class="pcard-foot">
+            <div class="pcard-price">₱${item.price.toFixed(2)}</div>
+            <span class="sp ${sc}">${sl}</span>
+          </div>
         </div>
       `;
     });
@@ -617,68 +627,235 @@ function renderMenu() {
   document.getElementById('menu-body').innerHTML = html;
 }
 
-/* ---------------- SELECT PRODUCT ---------------- */
-function pick(code) {
-  sel = items.find(i => i.code === code);
+function setTab(el, f) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  filt = f;
+  renderMenu();
+}
 
-  document.getElementById('sel-box').innerHTML = `
+function pick(code) {
+  document.querySelectorAll('.pcard.selected').forEach(c => c.classList.remove('selected'));
+
+  document.getElementById(`pc-${code}`)?.classList.add('selected');
+  sel = items.find(i => i.code === code);
+  if (!sel) return;
+
+  const s = SLUG[sel.category] || 'c';
+  const box = document.getElementById('sel-box');
+
+  box.className = `sel-box filled ac-${s}`;
+  box.innerHTML = `
+    <span class="sel-emo">${EMO[sel.code] || '🍽️'}</span>
     <div>
-      <strong>${sel.name}</strong><br>
-      ₱${sel.price}
+      <div class="sel-name">${sel.name}</div>
+      <div class="sel-meta">${sel.brand} · ₱${sel.price.toFixed(2)} each · ${sel.stock} in stock</div>
     </div>
   `;
 
+  document.getElementById('qty').value = 1;
   document.getElementById('sub-btn').disabled = false;
   calcTotal();
 }
 
-/* ---------------- TOTAL ---------------- */
+function adjQty(d) {
+  const inp = document.getElementById('qty');
+  const max = sel ? sel.stock : 99;
+  inp.value = Math.max(1, Math.min(max, parseInt(inp.value || 1) + d));
+  calcTotal();
+}
+
 function calcTotal() {
   if (!sel) return;
   const q = parseInt(document.getElementById('qty').value) || 1;
-  document.getElementById('total').textContent =
-    `₱${(sel.price * q).toFixed(2)}`;
+  document.getElementById('total').textContent = `₱${(sel.price * q).toFixed(2)}`;
 }
 
-/* ---------------- ORDER ---------------- */
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('qty').addEventListener('input', calcTotal);
+});
+
 async function placeOrder() {
   if (!sel) return;
 
-  const name = document.getElementById('cname').value || 'Guest';
-  const qty = document.getElementById('qty').value;
+  const name = document.getElementById('cname').value.trim() || 'Guest';
+  const qty = parseInt(document.getElementById('qty').value) || 1;
+
+  if (qty > sel.stock) {
+    toast(`⚠️ Only ${sel.stock} in stock!`);
+    return;
+  }
+
+  const btn = document.getElementById('sub-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Processing…';
 
   const xml = `
     <Order>
       <ProductCode>${sel.code}</ProductCode>
       <Quantity>${qty}</Quantity>
-      <CustomerName>${name}</CustomerName>
+      <CustomerName>${escapeXML(name)}</CustomerName>
     </Order>
   `;
 
-  const res = await fetch(ORD, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/xml'},
-    body: xml
-  });
+  try {
+    const res = await fetch(ORD, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/xml'},
+      body: xml
+    });
 
-  const txt = await res.text();
-  alert(txt);
+    const txt = await res.text();
+    const doc = new DOMParser().parseFromString(txt, 'application/xml');
+    const status = doc.querySelector('Status')?.textContent;
 
-  loadInventory();
+    if (status === 'Success') {
+      const txn = doc.querySelector('TransactionID')?.textContent || '';
+      const total = doc.querySelector('TotalAmount')?.textContent || '0';
+      const now = new Date().toLocaleString('en-PH');
+
+      openReceipt({ name, item: sel, qty, total, txn, dt: now });
+
+      toast('🧡 Order placed successfully!');
+      await loadInventory();
+      await loadHistory();
+      resetForm();
+    } else {
+      const msg = doc.querySelector('Message')?.textContent || 'Order failed';
+      toast('❌ ' + msg);
+    }
+  } catch (err) {
+    toast('❌ Connection error');
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = 'Place Order';
 }
 
-/* ---------------- HISTORY ---------------- */
+function openReceipt({name, item, qty, total, txn, dt}) {
+  document.getElementById('r-dt').textContent = dt;
+  document.getElementById('r-cust').textContent = name;
+  document.getElementById('r-txn').textContent = txn;
+  document.getElementById('r-txnb').textContent = txn;
+  document.getElementById('r-total').textContent = `₱${parseFloat(total).toFixed(2)}`;
+
+  document.getElementById('r-items').innerHTML = `
+    <div class="ritem">
+      <div>
+        <div class="ritem-name">${EMO[item.code] || '🍽️'} ${item.name}</div>
+        <div class="ritem-det">${item.brand} · ₱${item.price.toFixed(2)} × ${qty}</div>
+      </div>
+      <div class="ritem-amt">₱${(item.price * qty).toFixed(2)}</div>
+    </div>
+  `;
+
+  document.getElementById('overlay').classList.add('open');
+}
+
 async function loadHistory() {
   try {
     const r = await fetch(HIST);
     const txt = await r.text();
-    document.getElementById('hlist').innerText = txt;
-  } catch {}
+    const x = new DOMParser().parseFromString(txt, 'application/xml');
+
+    const ords = [...x.querySelectorAll('Order')].reverse();
+    document.getElementById('order-count').textContent = ords.length;
+
+    const list = document.getElementById('hlist');
+
+    if (!ords.length) {
+      list.innerHTML = `<div class="no-h"><div class="no-h-ico">🧾</div><p>No orders yet!</p></div>`;
+      return;
+    }
+
+    let totalItems = 0;
+    let totalRevenue = 0;
+
+    list.innerHTML = ords.map(o => {
+      const code = o.querySelector('ProductCode')?.textContent || '';
+      const prod = o.querySelector('ProductName')?.textContent || '';
+      const brand = o.querySelector('Brand')?.textContent || '';
+      const cust = o.querySelector('CustomerName')?.textContent || 'Guest';
+      const qty = parseInt(o.querySelector('Quantity')?.textContent || '0');
+      const total = parseFloat(o.querySelector('TotalAmount')?.textContent || '0');
+      const ts = o.querySelector('Timestamp')?.textContent || '';
+
+      totalItems += qty;
+      totalRevenue += total;
+
+      return `
+        <div class="hrow">
+          <div class="hrow-ico">${EMO[code] || '🍽️'}</div>
+          <div class="hrow-main">
+            <div class="hrow-name">${prod}</div>
+            <div class="hrow-sub">
+              <span>👤 ${cust}</span>
+              <span>${brand}</span>
+              <span>×${qty}</span>
+            </div>
+            <div class="hrow-sub">🕐 ${ts}</div>
+          </div>
+          <div class="hrow-right">
+            <div class="hrow-amt">₱${total.toFixed(2)}</div>
+            <div class="hrow-badge">PAID</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    document.getElementById('hstats').classList.add('show');
+    document.getElementById('s-ord').textContent = ords.length;
+    document.getElementById('s-itm').textContent = totalItems;
+    document.getElementById('s-rev').textContent = `₱${totalRevenue.toFixed(2)}`;
+
+  } catch (e) {
+    document.getElementById('hlist').innerHTML =
+      `<div class="no-h"><div class="no-h-ico">⚠️</div><p>Could not load history.</p></div>`;
+  }
 }
 
-/* ---------------- INIT ---------------- */
+function resetForm() {
+  sel = null;
+  document.querySelectorAll('.pcard.selected').forEach(c => c.classList.remove('selected'));
+
+  const box = document.getElementById('sel-box');
+  box.className = 'sel-box';
+  box.innerHTML = `<span class="sel-ph">👆 Tap a product on the menu</span>`;
+
+  document.getElementById('qty').value = 1;
+  document.getElementById('total').textContent = '₱0.00';
+  document.getElementById('sub-btn').disabled = true;
+}
+
+function escapeXML(s) {
+  return s.replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+}
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+function scrollToHistory() {
+  document.getElementById('history-section').scrollIntoView({behavior: 'smooth'});
+}
+
+function closeReceipt() {
+  document.getElementById('overlay').classList.remove('open');
+}
+
+function closeOuter(e) {
+  if (e.target.id === 'overlay') closeReceipt();
+}
+
 loadInventory();
 loadHistory();
+setInterval(loadInventory, 30000);
 </script>
 </body>
 </html>
