@@ -2,17 +2,19 @@ from flask import Flask, request, Response
 from flask_cors import CORS
 import xml.etree.ElementTree as ET
 import uuid
+import os
 
 app = Flask(__name__)
 CORS(app)
 
-@app.route('/process_payment', methods=['POST'])
+
+@app.route("/process_payment", methods=["POST"])
 def pay():
     root = ET.fromstring(request.data)
 
-    amount = float(root.find('Amount').text)
-    product = root.find('ProductName').text
-    qty = int(root.find('Quantity').text)
+    amount = float(root.find("Amount").text)
+    product = root.find("ProductName").text
+    qty = int(root.find("Quantity").text)
 
     res = ET.Element("PaymentResponse")
 
@@ -29,4 +31,5 @@ def pay():
 
 
 if __name__ == "__main__":
-    app.run(port=5002, debug=True)
+    port = int(os.environ.get("PORT", 5002))
+    app.run(host="0.0.0.0", port=port)
